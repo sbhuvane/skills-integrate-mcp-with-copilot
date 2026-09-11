@@ -3,6 +3,24 @@ document.addEventListener("DOMContentLoaded", () => {
   const activitySelect = document.getElementById("activity");
   const signupForm = document.getElementById("signup-form");
   const messageDiv = document.getElementById("message");
+  const loginForm = document.getElementById("login-form");
+  const loginStatus = document.getElementById("login-status");
+  const emailInput = document.getElementById("email");
+  let authHeader = "";
+  let currentUser = null;
+
+  function authOptions(method) {
+    return { method, headers: { Authorization: authHeader } };
+  }
+
+  function showLoginStatus(message, className) {
+    loginStatus.textContent = message;
+    loginStatus.className = className;
+  }
+
+  function canModify(email) {
+    return currentUser && (currentUser.role !== "student" || currentUser.username === email);
+  }
 
   // Function to fetch activities from API
   async function fetchActivities() {
@@ -30,7 +48,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 ${details.participants
                   .map(
                     (email) =>
-                      `<li><span class="participant-email">${email}</span><button class="delete-btn" data-activity="${name}" data-email="${email}">❌</button></li>`
+                      `<li><span class="participant-email">${email}</span>${canModify(email) ? `<button class="delete-btn" data-activity="${name}" data-email="${email}">Remove</button>` : ""}</li>`
                   )
                   .join("")}
               </ul>
@@ -78,9 +96,7 @@ document.addEventListener("DOMContentLoaded", () => {
         `/activities/${encodeURIComponent(
           activity
         )}/unregister?email=${encodeURIComponent(email)}`,
-        {
-          method: "DELETE",
-        }
+        authOptions("DELETE")
       );
 
       const result = await response.json();
@@ -122,9 +138,7 @@ document.addEventListener("DOMContentLoaded", () => {
         `/activities/${encodeURIComponent(
           activity
         )}/signup?email=${encodeURIComponent(email)}`,
-        {
-          method: "POST",
-        }
+        authOptions("POST")
       );
 
       const result = await response.json();
@@ -152,6 +166,37 @@ document.addEventListener("DOMContentLoaded", () => {
       messageDiv.className = "error";
       messageDiv.classList.remove("hidden");
       console.error("Error signing up:", error);
+    }
+  });
+
+  loginForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const username = document.getElementById("username").value;
+    const password = document.getElementById("password").value;
+    authHeader = `Basic ${btoa(`${username}:${password}`)}`;
+
+    try {
+      const response = await fetch("/me", authOptions("GET"));
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.detail || "Unable to sign in");
+      }
+
+      currentUser = result;
+      if (currentUser.role === "student") {
+        emailInput.value = currentUser.username;
+        emailInput.readOnly = true;
+      } else {
+        emailInput.readOnly = false;
+      }
+      showLoginStatus(`Signed in as ${currentUser.username} (${currentUser.role})`, "success");
+      fetchActivities();
+    } catch (error) {
+      authHeader = "";
+      currentUser = null;
+      emailInput.value = "";
+      emailInput.readOnly = false;
+      showLoginStatus(error.message, "error");
     }
   });
 
